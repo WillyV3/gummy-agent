@@ -27,11 +27,21 @@ sudo chmod +x /usr/local/bin/gummy-watch
 echo -e "${BLUE}→${NC} Creating directories..."
 mkdir -p ~/.claude/logs/gummy
 mkdir -p ~/.claude/agent_comms/gummy
+mkdir -p ~/.claude/commands
+
+# Install slash commands
+echo -e "${BLUE}→${NC} Installing slash commands..."
+cp commands/*.md ~/.claude/commands/
 
 echo ""
 echo -e "${GREEN}✓${NC} Installation complete!"
 echo ""
-echo "Usage:"
+echo "Slash commands installed:"
+echo "  /gummy-plan - Plan complex tasks"
+echo "  /gummy-execute - Execute approved plans"
+echo "  /gummy-task - Run simple tasks"
+echo ""
+echo "Direct usage:"
 echo "  gummy plan \"your task description\""
 echo "  gummy task \"simple task description\""
 echo "  gummy-watch [task-id]"
