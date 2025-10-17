@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Full Release Pipeline for gummy-agent
-# Handles: commit, push, tag, homebrew update, and GitHub release with changelog
+# Just code and run - handles everything automatically
 
 set -e
 
@@ -16,7 +16,8 @@ NC='\033[0m'
 REPO_ORG="WillyV3"
 REPO_NAME="gummy-agent"
 HOMEBREW_TAP_PATH="$HOME/homebrew-tap"
-FORMULA_FILE="$HOMEBREW_TAP_PATH/Formula/gummy-agent.rb"
+FORMULA_SOURCE="gummy-agent.rb"
+FORMULA_DEST="$HOMEBREW_TAP_PATH/Formula/gummy-agent.rb"
 
 # Function to print colored output
 print_step() {
@@ -34,14 +35,6 @@ print_error() {
 
 print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
-}
-
-# Check for uncommitted changes
-check_git_status() {
-    if [[ -n $(git status -s) ]]; then
-        return 1
-    fi
-    return 0
 }
 
 # Get current version from tags
@@ -128,7 +121,7 @@ generate_changelog() {
 main() {
     echo ""
     echo "========================================="
-    echo "   gummy-agent Full Release Pipeline"
+    echo "   gummy-agent Release Pipeline"
     echo "========================================="
     echo ""
 
@@ -140,10 +133,10 @@ main() {
         print_error "Invalid bump type. Use: major, minor, or patch"
     fi
 
-    # Step 1: Check for uncommitted changes
-    print_step "Checking git status..."
-    if ! check_git_status; then
-        print_warning "Uncommitted changes detected. Committing them..."
+    # Step 1: Commit any pending changes
+    print_step "Checking for changes..."
+    if [[ -n $(git status -s) ]]; then
+        print_warning "Uncommitted changes found. Adding and committing..."
 
         git add -A
 
@@ -151,20 +144,15 @@ main() {
             git commit -m "$CUSTOM_MESSAGE"
         else
             # Generate commit message from changes
-            COMMIT_MSG="Update: $(git diff --cached --name-only | head -3 | xargs basename | paste -sd ', ' -)"
+            COMMIT_MSG="Release prep: $(git diff --cached --name-only | head -3 | xargs basename | paste -sd ', ' -)"
             git commit -m "$COMMIT_MSG"
         fi
         print_success "Changes committed"
     else
-        print_success "Working directory clean"
+        print_success "No uncommitted changes"
     fi
 
-    # Step 2: Push to remote
-    print_step "Pushing to remote..."
-    git push origin main
-    print_success "Pushed to GitHub"
-
-    # Step 3: Get version info
+    # Step 2: Get version info
     CURRENT_VERSION=$(get_current_version)
     NEW_VERSION=$(get_next_version "$CURRENT_VERSION" "$BUMP_TYPE")
 
@@ -173,26 +161,26 @@ main() {
     print_step "New version: ${NEW_VERSION}"
     echo ""
 
-    # Step 4: Build TUI binary
+    # Step 3: Build TUI binary to ensure it compiles
     print_step "Building gummy-watch binary..."
     ./build-gummy-watch.sh
     print_success "Build successful"
 
-    # Step 5: Create and push tag
+    # Step 4: Create and push tag
     print_step "Creating git tag ${NEW_VERSION}..."
     git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+
+    print_step "Pushing to GitHub..."
+    git push origin main
     git push origin "$NEW_VERSION"
-    print_success "Tag created and pushed"
+    print_success "Tag and code pushed to GitHub"
 
-    # Step 6: Update Homebrew formula
-    print_step "Updating Homebrew formula..."
-
-    # Wait for GitHub to process the tag
+    # Step 5: Calculate SHA256 for new tarball
+    print_step "Waiting for GitHub to process tag..."
     sleep 5
 
-    # Download tarball and calculate SHA256
     TARBALL_URL="https://github.com/${REPO_ORG}/${REPO_NAME}/archive/${NEW_VERSION}.tar.gz"
-    print_step "Downloading tarball from ${TARBALL_URL}..."
+    print_step "Calculating SHA256 for ${TARBALL_URL}..."
 
     SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | cut -d' ' -f1)
 
@@ -200,25 +188,30 @@ main() {
         print_error "Failed to download tarball or calculate SHA256"
     fi
 
-    print_step "SHA256: ${SHA256}"
+    print_success "SHA256: ${SHA256}"
 
-    # Update formula
-    if [[ -f $FORMULA_FILE ]]; then
-        # Update URL and SHA256 in formula
-        sed -i '' "s|url \".*\"|url \"${TARBALL_URL}\"|" "$FORMULA_FILE"
-        sed -i '' "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA_FILE"
+    # Step 6: Update formula with new URL and SHA256
+    print_step "Updating Homebrew formula..."
 
-        # Commit and push homebrew formula
-        cd "$HOMEBREW_TAP_PATH"
-        git add Formula/gummy-agent.rb
-        git commit -m "Update gummy-agent to ${NEW_VERSION}"
-        git push
-        cd - > /dev/null
-
-        print_success "Homebrew formula updated"
-    else
-        print_warning "Homebrew formula not found at $FORMULA_FILE"
+    if [[ ! -f $FORMULA_SOURCE ]]; then
+        print_error "Formula source file not found: $FORMULA_SOURCE"
     fi
+
+    # Copy the full formula to tap (preserves all changes including ASCII art)
+    cp "$FORMULA_SOURCE" "$FORMULA_DEST"
+
+    # Update only URL and SHA256 in the tap formula
+    sed -i '' "s|url \".*\"|url \"${TARBALL_URL}\"|" "$FORMULA_DEST"
+    sed -i '' "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA_DEST"
+
+    # Commit and push to homebrew tap
+    cd "$HOMEBREW_TAP_PATH"
+    git add Formula/gummy-agent.rb
+    git commit -m "Release gummy-agent ${NEW_VERSION}"
+    git push
+    cd - > /dev/null
+
+    print_success "Homebrew formula updated in tap"
 
     # Step 7: Generate changelog
     print_step "Generating changelog..."
@@ -227,7 +220,6 @@ main() {
     # Step 8: Create GitHub release
     print_step "Creating GitHub release..."
 
-    # Create release with changelog
     gh release create "$NEW_VERSION" \
         --repo "${REPO_ORG}/${REPO_NAME}" \
         --title "Release ${NEW_VERSION}" \
@@ -238,16 +230,18 @@ main() {
 
     echo ""
     echo "========================================="
-    echo -e "${GREEN}✓ Release ${NEW_VERSION} completed successfully!${NC}"
+    echo -e "${GREEN}✓ Release ${NEW_VERSION} complete!${NC}"
     echo "========================================="
     echo ""
-    echo "Installation:"
-    echo "  brew upgrade gummy-agent"
-    echo "  or"
+    echo "Users can now install/upgrade with:"
     echo "  brew install ${REPO_ORG}/tap/gummy-agent"
+    echo "  brew upgrade gummy-agent"
     echo ""
     echo "Release URL:"
     echo "  https://github.com/${REPO_ORG}/${REPO_NAME}/releases/tag/${NEW_VERSION}"
+    echo ""
+    echo "Note: If post_install fails due to permissions, users can run:"
+    echo "  cp /opt/homebrew/Cellar/gummy-agent/*/commands/*.md ~/.claude/commands/"
     echo ""
 }
 

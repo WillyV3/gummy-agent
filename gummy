@@ -18,14 +18,60 @@ mkdir -p "$AGENT_COMMS" "$LOGS_DIR"
 # Parse command
 if [[ $# -lt 1 ]]; then
     echo "Usage:"
-    echo "  gummy plan <task-description>"
-    echo "  gummy execute <task-id>"
-    echo "  gummy task <task-description>"
+    echo "  gummy setup                    - Install Claude CLI commands"
+    echo "  gummy plan <task-description>  - Plan a complex task"
+    echo "  gummy execute <task-id>        - Execute an approved plan"
+    echo "  gummy task <task-description>  - Run a simple task"
     exit 1
 fi
 
 MODE="$1"
 shift
+
+# ============================================================================
+# SETUP MODE - Install Claude CLI commands
+# ============================================================================
+if [[ "$MODE" == "setup" ]]; then
+    echo "Setting up gummy-agent Claude CLI commands..."
+    echo ""
+
+    # Find where brew installed the commands
+    if command -v brew &>/dev/null; then
+        BREW_PREFIX=$(brew --prefix gummy-agent 2>/dev/null || echo "/opt/homebrew/opt/gummy-agent")
+    else
+        BREW_PREFIX="/opt/homebrew/opt/gummy-agent"
+    fi
+
+    COMMANDS_SOURCE="${BREW_PREFIX}/commands"
+    COMMANDS_DEST="$HOME/.claude/commands"
+
+    # Create destination directory
+    mkdir -p "$COMMANDS_DEST"
+    mkdir -p "$HOME/.claude/logs/gummy"
+    mkdir -p "$HOME/.claude/agent_comms/gummy"
+
+    # Copy commands
+    if [[ -d "$COMMANDS_SOURCE" ]]; then
+        cp "$COMMANDS_SOURCE"/*.md "$COMMANDS_DEST/"
+        echo "✓ Installed Claude CLI commands:"
+        echo "  /gummy-plan"
+        echo "  /gummy-execute"
+        echo "  /gummy-task"
+        echo ""
+        echo "✓ Created directories:"
+        echo "  ~/.claude/logs/gummy/"
+        echo "  ~/.claude/agent_comms/gummy/"
+        echo ""
+        echo "Setup complete! You can now use /gummy-plan, /gummy-execute, and /gummy-task in Claude CLI."
+    else
+        echo "Error: Commands not found at $COMMANDS_SOURCE"
+        echo ""
+        echo "If you installed gummy-agent somewhere else, commands should be at:"
+        echo "  [install-location]/commands/*.md"
+        exit 1
+    fi
+    exit 0
+fi
 
 # ============================================================================
 # PLAN MODE
