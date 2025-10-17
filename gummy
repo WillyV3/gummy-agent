@@ -7,6 +7,14 @@
 
 set -euo pipefail
 
+# Find claude command
+CLAUDE_CMD=$(command -v claude || echo "")
+if [[ -z "$CLAUDE_CMD" ]]; then
+    echo "Error: 'claude' command not found in PATH"
+    echo "Please install Claude Code CLI: https://docs.claude.com"
+    exit 1
+fi
+
 # Fixed paths (work from any directory)
 GUMMY_HOME="$HOME/.claude"
 AGENT_COMMS="$GUMMY_HOME/agent_comms/gummy"
@@ -215,7 +223,7 @@ PLAN_TEMPLATE_EOF
     echo ""
 
     # Spawn Haiku agent
-    claude -p \
+    "$CLAUDE_CMD" -p \
       --model haiku \
       --output-format stream-json \
       --verbose \
@@ -387,7 +395,7 @@ EXEC_TEMPLATE_END
     echo ""
 
     # Spawn Haiku agent
-    claude -p \
+    "$CLAUDE_CMD" -p \
       --model haiku \
       --output-format stream-json \
       --verbose \
@@ -523,7 +531,7 @@ TASK_TEMPLATE_EOF
     echo ""
 
     # Spawn Haiku agent
-    claude -p \
+    "$CLAUDE_CMD" -p \
       --model haiku \
       --output-format stream-json \
       --verbose \
