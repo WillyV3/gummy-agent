@@ -1,8 +1,8 @@
 class GummyAgent < Formula
   desc "Fast multi-agent orchestration using Claude Haiku with real-time TUI monitoring"
   homepage "https://github.com/WillyV3/gummy-agent"
-  url "https://github.com/WillyV3/gummy-agent/archive/v0.0.1.tar.gz"
-  sha256 "ffa74102df7cf073e8f8083e6d87dcbf4ef54d26fd7edecef0aaea4e22ab1e11"
+  url "https://github.com/WillyV3/gummy-agent/archive/v0.0.2.tar.gz"
+  sha256 "1a00ac041003918d1a4da148f00b82a54500eb73282bf316e87dc3d2a2d0793e"
   license "MIT"
 
   depends_on "go" => :build
@@ -26,10 +26,10 @@ class GummyAgent < Formula
     logs_dir = "#{claude_home}/logs/gummy"
     comms_dir = "#{claude_home}/agent_comms/gummy"
 
-    # Create directories
-    system "mkdir", "-p", commands_dir
-    system "mkdir", "-p", logs_dir
-    system "mkdir", "-p", comms_dir
+    # Create directories using Ruby
+    FileUtils.mkdir_p(commands_dir)
+    FileUtils.mkdir_p(logs_dir)
+    FileUtils.mkdir_p(comms_dir)
 
     # Install slash commands to user's Claude config
     Dir["#{prefix}/commands/*.md"].each do |cmd_file|
@@ -38,8 +38,8 @@ class GummyAgent < Formula
 
       # Copy command file if it doesn't exist or update if different
       if !File.exist?(target) || File.read(cmd_file) != File.read(target)
-        system "cp", cmd_file, target
-        puts "  Installed command: /#{File.basename(cmd_name, '.md')}"
+        FileUtils.cp(cmd_file, target)
+        ohai "Installed command: /#{File.basename(cmd_name, '.md')}"
       end
     end
   end
@@ -47,11 +47,13 @@ class GummyAgent < Formula
   def caveats
     <<~EOS
 
-  _   _  _     _ _ _  _/ _
- (/(///)//)(/ (/(/(-/)/_)
-_/         /   _/
+eeeee e   e eeeeeee eeeeeee e    e    eeeee eeeee eeee eeeee eeeee eeeee
+8   8 8   8 8  8  8 8  8  8 8    8    8   8 8   8 8    8   8   8   8   "
+8e    8e  8 8e 8  8 8e 8  8 8eeee8    8eee8 8e    8eee 8e  8   8e  8eeee
+88 "8 88  8 88 8  8 88 8  8   88      88  8 88 "8 88   88  8   88     88
+88ee8 88ee8 88 8  8 88 8  8   88      88  8 88ee8 88ee 88  8   88  8ee88
 
-                    @builtbywilly.com
+                                                        @builtbywilly.com
 
       gummy-agent has been installed!
 
