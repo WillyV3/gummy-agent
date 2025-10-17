@@ -241,19 +241,20 @@ func (m model) View() string {
 		panelWidth = 40
 	}
 
-	// Show task mode if present, otherwise show plan/execute
+	// Show only the active agent at any time
 	if m.taskRunner.status != "not_started" {
 		// Task mode
 		taskBorder := lipgloss.Color("208") // Orange
 		b.WriteString(lipgloss.NewStyle().Foreground(taskBorder).Bold(true).Render("═══ TASK (HAIKU) ═══") + "\n")
 		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(taskBorder).Render(renderAgent(m.taskRunner, panelWidth-4)) + "\n\n")
-	} else {
-		// Plan/Execute mode
-		b.WriteString(lipgloss.NewStyle().Foreground(plannerBorder).Bold(true).Render("═══ PLAN (HAIKU) ═══") + "\n")
-		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(plannerBorder).Render(renderAgent(m.planner, panelWidth-4)) + "\n\n")
-
+	} else if m.executor.status == "running" || m.executor.status == "completed" || m.executor.status == "failed" {
+		// Execute mode - show only executor
 		b.WriteString(lipgloss.NewStyle().Foreground(executorBorder).Bold(true).Render("═══ EXECUTE (HAIKU) ═══") + "\n")
 		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(executorBorder).Render(renderAgent(m.executor, panelWidth-4)) + "\n\n")
+	} else if m.planner.status != "not_started" {
+		// Plan mode - show only planner
+		b.WriteString(lipgloss.NewStyle().Foreground(plannerBorder).Bold(true).Render("═══ PLAN (HAIKU) ═══") + "\n")
+		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(plannerBorder).Render(renderAgent(m.planner, panelWidth-4)) + "\n\n")
 	}
 
 	// Status
