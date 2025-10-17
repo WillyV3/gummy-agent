@@ -1,125 +1,98 @@
 # gummy-agent
 
-Multi-agent orchestration for Claude Code using Haiku 4.5 to manage context across development sessions.
+Multi-agent orchestration for Claude Code using Haiku 4.5.
 
 ## What This Is
 
-A personal tool for managing context during Claude Code development. When Sonnet 4.5 runs out of context mid-session, this system uses Haiku 4.5 agents to handle specific tasks while keeping the main conversation focused.
+Since Sonnet 4.5 came out I've been running out of context really quickly. Different strategies to manage context across sessions - sometimes forced to start conversations from zero (praying I had prepared carryover prompts, but often hadn't) or being forced into /compact.
 
-Not a competitor to other agentic frameworks. This made sense for my workflow and still does.
+Haiku 4.5 got released and I wanted to make my own little agent system.
 
-Named after charmbracelet/gum (the initial inspiration), though it now uses full bubbletea for the TUI.
+Named after charmbracelet/gum (the inspiration during initial build) - though we went full bubbletea and will probably over-engineer on the UI in later updates.
 
-## Why This Exists
+This is not a competition with other agentic frameworks on the market and definitely not as fancy. It made sense to me and still does.
 
-Working in an enterprise Go codebase where every line gets scrutinized. Using this to:
-- Double-check implementations against plans
-- Triple-check before, during, and after implementation
-- Manage context when Sonnet runs out mid-feature
-- Avoid starting conversations from zero when context is lost
-
-## Modes
-
-### Plan Mode
-Haiku creates implementation plan with research. Used for:
-- Planning complex features before implementation
-- Getting a second opinion on approach
-- Documenting discovery phase
-
-### Execute Mode
-Haiku implements an approved plan. Used after:
-- Reviewing plan with main Claude
-- Validating approach
-- Getting approval to proceed
-
-### Task Mode
-Haiku handles single-shot tasks. Used for:
-- Refactoring code
-- Adding documentation
-- Simple bug fixes
-- Repetitive changes
-
-## Installation
+## Install
 
 ```bash
 brew install willyv3/tap/gummy-agent
 gummy setup
 ```
 
-Or from source:
-```bash
-git clone https://github.com/WillyV3/gummy-agent.git
-cd gummy-agent
-./scripts/install.sh
-```
-
 ## Usage
 
-```bash
-# Plan a feature
-gummy plan "Add rate limiting middleware with Redis"
+Three slash commands in Claude Code:
 
-# Review plan files in ~/.claude/agent_comms/gummy/
+### `/gummy-task "description"`
 
-# Execute if approved
-gummy execute [task-id]
-
-# Quick tasks
-gummy task "Add JSDoc comments to utils"
-
-# Monitor any mode
-gummy-watch [task-id]
+Quick single-shot tasks when there's context:
+```
+/gummy-task "refactor the auth helpers"
+/gummy-task "add JSDoc to all utils"
+/gummy-task "fix bug in parseUserInput"
 ```
 
-## Monitoring TUI
+### `/gummy-plan "description"`
 
-Real-time monitoring with:
-- Agent status and progress
-- Markdown rendering with syntax highlighting
-- Press 'c' to copy output
-- Press 'q' to quit
+Plan bigger features:
+```
+/gummy-plan "Build full Go TUI with bubbletea for process monitoring"
+/gummy-plan "Create bash script that syncs git repos with conflict detection"
+```
+
+Haiku researches, discovers, creates implementation plan.
+
+### `/gummy-execute task-id`
+
+Execute approved plan:
+```
+/gummy-execute gummy-1234567890
+```
+
+Review plan files first, then run this.
+
+## When to Use What
+
+**Task:** Quick stuff, you know what to do, lots of context already
+
+**Plan/Execute:** Bigger features, multiple files, need research
 
 ## Files
 
-All stored in `~/.claude/`:
-- `logs/gummy/` - Execution logs (stream-json format)
+Everything in `~/.claude/`:
+- `logs/gummy/` - Execution logs
 - `agent_comms/gummy/` - Plans, reports, discoveries
-- `commands/` - Claude Code slash commands
 
-## Workflow
+## CLI
 
-Typical usage during feature development:
+You can also run directly:
+```bash
+gummy task "description"
+gummy plan "description"
+gummy execute task-id
 
-1. Main Claude conversation hits context limits or needs validation
-2. Run `gummy plan "feature description"`
-3. Review plan files with main Claude
-4. If approved: `gummy execute [task-id]`
-5. Continue main conversation with results
+# Watch real-time
+gummy-watch task-id
+```
 
-Or for simple tasks:
-1. `gummy task "refactor X"`
-2. Review output
-3. Continue
+## Why
 
-## Requirements
+Building features in an enterprise Go codebase. New to having every line of code I write be scrutinized this much. Using this to double and triple check implementations against plans - before, during, and after.
 
-- Claude Code CLI with API key configured
-- Go 1.21+ (for building from source)
-- Bash 4.0+
-- macOS or Linux
+These commands are meant to be used by Claude Code during development.
 
-## Architecture
+## Tech
 
-- `gummy` - Bash launcher, handles orchestration
-- `gummy-watch` - Go TUI (bubbletea + lipgloss + glamour)
+- Bash launcher handles all orchestration
+- Go TUI (bubbletea + lipgloss + glamour) for monitoring
 - All agents use Haiku 4.5
-- Fixed paths in `~/.claude/` (works from any directory)
+- Fixed paths in `~/.claude/`
 
 ## Status
 
-Work in progress. Building features as needed.
+Still a WIP. Building features as needed.
 
-Known issues tracked at: https://github.com/WillyV3/gummy-agent/issues
+Issues: https://github.com/WillyV3/gummy-agent/issues
 
 ## Contact
 
