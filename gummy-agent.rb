@@ -53,7 +53,7 @@ eeeee e   e eeeeeee eeeeeee e    e    eeeee eeeee eeee eeeee eeeee eeeee
 
       Docs: https://github.com/WillyV3/gummy-agent
 
-      SETUP: Run once to install Claude CLI commands
+      SETUP: Run once to install Claude Code commands
         gummy setup
     EOS
   end
