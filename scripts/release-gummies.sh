@@ -163,7 +163,7 @@ main() {
 
     # Step 3: Build TUI binary to ensure it compiles
     print_step "Building gummy-watch binary..."
-    ./build-gummy-watch.sh
+    ./scripts/build-gummy-watch.sh
     print_success "Build successful"
 
     # Step 4: Create and push tag
