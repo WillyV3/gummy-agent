@@ -1,168 +1,132 @@
 # gummy-agent
 
-Fast multi-agent orchestration system using Claude Haiku 4.5 for rapid task execution with real-time TUI monitoring.
+Multi-agent orchestration for Claude Code using Haiku 4.5 to manage context across development sessions.
 
-## Overview
+## What This Is
 
-gummy-agent provides three execution modes:
+A personal tool for managing context during Claude Code development. When Sonnet 4.5 runs out of context mid-session, this system uses Haiku 4.5 agents to handle specific tasks while keeping the main conversation focused.
 
-1. **Plan Mode**: Haiku creates a detailed implementation plan with research and analysis
-2. **Execute Mode**: Haiku executes an approved plan with full implementation
-3. **Task Mode**: Haiku handles simple, single-shot tasks quickly
+Not a competitor to other agentic frameworks. This made sense for my workflow and still does.
 
-All modes include real-time TUI monitoring with markdown rendering and clipboard integration.
+Named after charmbracelet/gum (the initial inspiration), though it now uses full bubbletea for the TUI.
+
+## Why This Exists
+
+Working in an enterprise Go codebase where every line gets scrutinized. Using this to:
+- Double-check implementations against plans
+- Triple-check before, during, and after implementation
+- Manage context when Sonnet runs out mid-feature
+- Avoid starting conversations from zero when context is lost
+
+## Modes
+
+### Plan Mode
+Haiku creates implementation plan with research. Used for:
+- Planning complex features before implementation
+- Getting a second opinion on approach
+- Documenting discovery phase
+
+### Execute Mode
+Haiku implements an approved plan. Used after:
+- Reviewing plan with main Claude
+- Validating approach
+- Getting approval to proceed
+
+### Task Mode
+Haiku handles single-shot tasks. Used for:
+- Refactoring code
+- Adding documentation
+- Simple bug fixes
+- Repetitive changes
 
 ## Installation
 
-### Homebrew (Recommended)
-
 ```bash
 brew install willyv3/tap/gummy-agent
+gummy setup
 ```
 
-### From Source
-
+Or from source:
 ```bash
 git clone https://github.com/WillyV3/gummy-agent.git
 cd gummy-agent
-./install.sh
+./scripts/install.sh
 ```
 
-## Quick Start
-
-### Plan a Complex Feature
+## Usage
 
 ```bash
-gummy plan "Build authentication system with JWT tokens and refresh logic"
-```
+# Plan a feature
+gummy plan "Add rate limiting middleware with Redis"
 
-Review the generated plan files:
-- `~/.claude/agent_comms/gummy/[task-id]-discoveries.md` - Research findings
-- `~/.claude/agent_comms/gummy/[task-id]-plan.md` - Implementation plan
-- `~/.claude/agent_comms/gummy/[task-id]-plan-report.md` - Final plan summary
+# Review plan files in ~/.claude/agent_comms/gummy/
 
-### Execute an Approved Plan
-
-```bash
+# Execute if approved
 gummy execute [task-id]
-```
 
-### Run a Simple Task
+# Quick tasks
+gummy task "Add JSDoc comments to utils"
 
-```bash
-gummy task "Refactor the authentication helper functions for better readability"
-```
-
-### Monitor in Real-Time
-
-```bash
+# Monitor any mode
 gummy-watch [task-id]
 ```
 
-Features:
-- Live agent status and progress
-- Full markdown rendering with syntax highlighting
-- Press 'c' to copy final message to clipboard
-- Press 'q' or Ctrl+C to quit
+## Monitoring TUI
 
-## Architecture
+Real-time monitoring with:
+- Agent status and progress
+- Markdown rendering with syntax highlighting
+- Press 'c' to copy output
+- Press 'q' to quit
 
-- **Launcher**: Bash script (`gummy`) handles orchestration and agent spawning
-- **Agents**: All modes use Claude Haiku 4.5 for speed
-- **TUI**: Go application using Bubbletea, Lipgloss, and Glamour
-- **Logs**: Stream-JSON format in `~/.claude/logs/gummy/`
-- **Reports**: Markdown files in `~/.claude/agent_comms/gummy/`
+## Files
 
-## Workflow Examples
+All stored in `~/.claude/`:
+- `logs/gummy/` - Execution logs (stream-json format)
+- `agent_comms/gummy/` - Plans, reports, discoveries
+- `commands/` - Claude Code slash commands
 
-### Feature Development Workflow
+## Workflow
 
-```bash
-# 1. Create detailed plan
-gummy plan "Add rate limiting middleware with Redis backend"
+Typical usage during feature development:
 
-# 2. Review plan with main Claude instance
-# Check the plan files, discuss with Claude
+1. Main Claude conversation hits context limits or needs validation
+2. Run `gummy plan "feature description"`
+3. Review plan files with main Claude
+4. If approved: `gummy execute [task-id]`
+5. Continue main conversation with results
 
-# 3. Execute approved plan
-gummy execute gummy-1234567890
-
-# 4. Monitor execution
-gummy-watch gummy-1234567890
-```
-
-### Quick Task Workflow
-
-```bash
-# Single command for simple tasks
-gummy task "Add JSDoc comments to util functions"
-
-# Monitor if desired
-gummy-watch gummy-1234567891
-```
-
-## Configuration
-
-All files stored in `~/.claude/`:
-- `logs/gummy/` - Agent execution logs
-- `agent_comms/gummy/` - Plans, reports, and discoveries
-
-Works from any directory - no project-specific setup required.
+Or for simple tasks:
+1. `gummy task "refactor X"`
+2. Review output
+3. Continue
 
 ## Requirements
 
-- Claude CLI configured with API key
+- Claude Code CLI with API key configured
 - Go 1.21+ (for building from source)
 - Bash 4.0+
 - macOS or Linux
 
-## Use Cases
+## Architecture
 
-**Best for Plan Mode:**
-- Multi-file features requiring careful planning
-- Complex architectural changes
-- Features with multiple integration points
-- Changes requiring research and discovery
+- `gummy` - Bash launcher, handles orchestration
+- `gummy-watch` - Go TUI (bubbletea + lipgloss + glamour)
+- All agents use Haiku 4.5
+- Fixed paths in `~/.claude/` (works from any directory)
 
-**Best for Task Mode:**
-- Refactoring existing code
-- Adding comments or documentation
-- Simple bug fixes
-- Repetitive code changes
-- Single-file modifications
+## Status
 
-**Best for Execute Mode:**
-- Implementing an approved plan
-- Following established patterns
-- Changes reviewed and validated by main Claude
+Work in progress. Building features as needed.
 
-## Development
+Known issues tracked at: https://github.com/WillyV3/gummy-agent/issues
 
-### Project Structure
+## Contact
 
-```
-bin/
-├── gummy              # Main launcher script
-├── gummy-watch.go     # TUI monitoring application
-├── build-gummy-watch.sh
-└── go.mod
-
-~/.claude/
-├── logs/gummy/        # Execution logs
-└── agent_comms/gummy/ # Plans and reports
-```
-
-### Building
-
-```bash
-cd bin
-./build-gummy-watch.sh
-```
+- [@willyv3.com](https://willyv3.com)
+- [@builtbywilly.com](https://builtbywilly.com)
+- [@breakshit.blog](https://breakshit.blog)
 
 ## License
 
 MIT
-
-## Author
-
-Created by WillyV3
