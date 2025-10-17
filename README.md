@@ -4,6 +4,7 @@ Multi-agent orchestration for Claude Code using Haiku 4.5.
 
 ## What This Is
 
+
 Since Sonnet 4.5 came out I've been running out of context really quickly. Different strategies to manage context across sessions - sometimes forced to start conversations from zero (praying I had prepared carryover prompts, but often hadn't) or being forced into /compact.
 
 Haiku 4.5 got released and I wanted to make my own little agent system.
@@ -87,6 +88,10 @@ These commands are meant to be used by Claude Code during development.
 - Go TUI (bubbletea + lipgloss + glamour) for monitoring
 - All agents use Haiku 4.5
 - Fixed paths in `~/.claude/`
+
+## Screenshots
+
+<img width="1440" height="705" alt="image" src="https://github.com/user-attachments/assets/cfa89137-5b9d-4f5c-a8d0-cce1440fb780" />
 
 ## Status
 
