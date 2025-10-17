@@ -1,0 +1,523 @@
+#!/usr/bin/env bash
+# gummy - Multi-agent orchestration launcher with embedded templates
+# Usage:
+#   gummy plan <task-description>
+#   gummy execute <task-id>
+#   gummy task <task-description>
+
+set -euo pipefail
+
+# Fixed paths (work from any directory)
+GUMMY_HOME="$HOME/.claude"
+AGENT_COMMS="$GUMMY_HOME/agent_comms/gummy"
+LOGS_DIR="$GUMMY_HOME/logs/gummy"
+
+# Ensure directories exist
+mkdir -p "$AGENT_COMMS" "$LOGS_DIR"
+
+# Parse command
+if [[ $# -lt 1 ]]; then
+    echo "Usage:"
+    echo "  gummy plan <task-description>"
+    echo "  gummy execute <task-id>"
+    echo "  gummy task <task-description>"
+    exit 1
+fi
+
+MODE="$1"
+shift
+
+# ============================================================================
+# PLAN MODE
+# ============================================================================
+if [[ "$MODE" == "plan" ]]; then
+    # Get task description
+    if [[ $# -eq 0 ]]; then
+        echo "Error: Task description required"
+        echo "Usage: gummy plan <task-description>"
+        exit 1
+    fi
+
+    TASK_DESCRIPTION="$*"
+    TASK_ID="gummy-$(date +%s)"
+
+    echo "📋 Planning Mode"
+    echo "Task: $TASK_DESCRIPTION"
+    echo "Task ID: $TASK_ID"
+    echo ""
+
+    # Build instruction file from embedded template
+    INSTRUCTION_FILE="/tmp/${TASK_ID}-plan-instruction.txt"
+
+    cat > "$INSTRUCTION_FILE" << 'PLAN_TEMPLATE_EOF'
+## Planning Task: {{TASK_DESCRIPTION}}
+
+### Your Role
+You are a Haiku planning agent. Create a detailed, executable plan for this task. You will NOT implement - a separate Haiku agent will execute your approved plan.
+
+### Task Scope
+{{TASK_DESCRIPTION}}
+
+### Phase 0: Discovery (DO THIS FIRST)
+
+Investigate:
+1. Read relevant files to understand what needs to be done
+2. Check current state and any existing implementations
+3. Identify all files that must be modified or created
+4. Determine the best approach and structure
+5. Review similar patterns in the project (if any)
+
+**STOP and document findings**
+
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-discoveries.md`
+
+Include:
+- Complete analysis of what needs to be done
+- Current state assessment
+- Files involved
+- Recommended approach
+- Potential risks or conflicts
+
+### Phase 1: Create Implementation Plan
+
+Break into atomic phases with:
+- What: Exact change
+- Why: Reason based on discoveries
+- Files: Specific files to modify/create
+- Commands: Exact commands or code changes
+- Validation: How to verify success
+- Rollback: How to undo if needed
+
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-plan.md`
+
+Structure:
+```markdown
+# Plan: {{TASK_DESCRIPTION}}
+
+## Discovery Summary
+[Key findings from Phase 0]
+
+## Implementation Phases
+
+### Phase 1: [First Step]
+**What:** [Specific action]
+**Why:** [Reason]
+**Files:** [Specific paths]
+**Commands/Changes:**
+```bash
+# Exact commands or code
+```
+**Validation:**
+```bash
+# Command to verify
+```
+**Rollback:**
+```bash
+# Command to undo
+```
+
+[Repeat for each phase]
+
+## Success Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+...
+
+## Risk Assessment
+[Potential issues and mitigations]
+```
+
+### Phase 2: Planning Report
+
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-plan-report.md`
+
+Include:
+- Confidence level (Low/Medium/High/Very High)
+- Complexity estimate (Trivial/Low/Medium/High/Very High)
+- Risks identified with mitigations
+- Why this approach is recommended
+- Estimated execution time
+- Recommendation for Main Claude (approve/modify/reject)
+
+### Execution Rules
+
+1. **Discovery first** - Always start with thorough investigation
+2. **Atomic phases** - Each phase should be independent and reversible
+3. **Explicit validation** - Every phase needs a verification step
+4. **Clear rollback** - Document how to undo each change
+5. **Risk assessment** - Identify what could go wrong
+6. **Be thorough** - Better to over-plan than under-plan
+
+### Output Files
+
+You MUST create exactly 3 files:
+1. `{{AGENT_COMMS}}/{{TASK_ID}}-discoveries.md` - Discovery findings
+2. `{{AGENT_COMMS}}/{{TASK_ID}}-plan.md` - Detailed implementation plan
+3. `{{AGENT_COMMS}}/{{TASK_ID}}-plan-report.md` - Assessment and recommendation
+
+Begin planning now.
+PLAN_TEMPLATE_EOF
+
+    # Replace template variables
+    sed -i '' "s|{{TASK_DESCRIPTION}}|$TASK_DESCRIPTION|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
+
+    LOG_FILE="${LOGS_DIR}/${TASK_ID}-plan.log"
+
+    echo "🎬 Launching Haiku planner..."
+    echo ""
+
+    # Spawn Haiku agent
+    claude -p \
+      --model haiku \
+      --output-format stream-json \
+      --verbose \
+      --dangerously-skip-permissions \
+      < "$INSTRUCTION_FILE" \
+      > "$LOG_FILE" 2>&1 &
+
+    AGENT_PID=$!
+
+    echo "Spawned Haiku agent (PID: $AGENT_PID)"
+    echo ""
+    echo "🎨 MONITOR WITH TUI:"
+    echo "   gummy-watch $TASK_ID"
+    echo ""
+
+    # Wait for agent to complete
+    wait $AGENT_PID
+    AGENT_EXIT=$?
+
+    if [ $AGENT_EXIT -ne 0 ]; then
+        echo "❌ Planner failed with exit code: $AGENT_EXIT"
+        exit 1
+    fi
+
+    echo "✅ PLANNING COMPLETED"
+    echo ""
+    echo "=== PLAN READY FOR REVIEW ==="
+    echo ""
+    echo "📁 Plan files:"
+    echo "   - ${AGENT_COMMS}/${TASK_ID}-discoveries.md"
+    echo "   - ${AGENT_COMMS}/${TASK_ID}-plan.md"
+    echo "   - ${AGENT_COMMS}/${TASK_ID}-plan-report.md"
+    echo ""
+    echo "👉 Review the plan with main Claude, then run:"
+    echo "   gummy execute $TASK_ID"
+    echo ""
+    exit 0
+
+# ============================================================================
+# EXECUTE MODE
+# ============================================================================
+elif [[ "$MODE" == "execute" ]]; then
+    # Get task ID
+    if [[ $# -eq 0 ]]; then
+        echo "Error: Task ID required"
+        echo "Usage: gummy execute <task-id>"
+        exit 1
+    fi
+
+    TASK_ID="$1"
+
+    echo "⚙️  Execute Mode"
+    echo "Task ID: $TASK_ID"
+    echo ""
+
+    # Verify plan exists
+    PLAN_FILE="${AGENT_COMMS}/${TASK_ID}-plan.md"
+    DISCOVERIES_FILE="${AGENT_COMMS}/${TASK_ID}-discoveries.md"
+
+    if [[ ! -f "$PLAN_FILE" ]]; then
+        echo "❌ Error: Plan file not found: $PLAN_FILE"
+        echo ""
+        echo "Run planning first:"
+        echo "  gummy plan <task-description>"
+        exit 1
+    fi
+
+    echo "📋 Found approved plan"
+    echo ""
+
+    # Build execution instruction from embedded template
+    INSTRUCTION_FILE="/tmp/${TASK_ID}-execute-instruction.txt"
+
+    cat > "$INSTRUCTION_FILE" << 'EXEC_TEMPLATE_START'
+## Execution Task: Execute Approved Plan
+
+### Your Role
+You are a Haiku execution agent. Execute the approved plan EXACTLY as specified. You will NOT plan or design - follow the plan phase-by-phase with precision.
+
+### Context
+This is a two-phase gummy-agent workflow:
+- Phase 1 (COMPLETED): Planning agent created detailed implementation plan
+- Phase 2 (NOW): You will execute the approved plan
+
+### Approved Plan
+
+EXEC_TEMPLATE_START
+
+    # Append the actual plan
+    cat "$PLAN_FILE" >> "$INSTRUCTION_FILE"
+
+    # Add discoveries if available
+    if [[ -f "$DISCOVERIES_FILE" ]]; then
+        echo "" >> "$INSTRUCTION_FILE"
+        echo "### Discovery Findings" >> "$INSTRUCTION_FILE"
+        echo "" >> "$INSTRUCTION_FILE"
+        cat "$DISCOVERIES_FILE" >> "$INSTRUCTION_FILE"
+    fi
+
+    # Append execution rules
+    cat >> "$INSTRUCTION_FILE" << 'EXEC_TEMPLATE_END'
+
+### Execution Rules
+
+#### CRITICAL REQUIREMENTS
+1. **Execute phases SEQUENTIALLY** - Complete Phase N before starting Phase N+1
+2. **Validate after EACH phase** - Run validation command and verify success
+3. **STOP on first failure** - Execute rollback and report error, do NOT continue
+4. **Follow plan EXACTLY** - Do not modify, do not improvise
+5. **Create execution report** - Document what was done, all validation results
+
+#### Phase Completion Checklist
+After each phase:
+- [ ] Commands executed without error
+- [ ] Validation command passed
+- [ ] Output shows success message
+- [ ] Ready to proceed to next phase
+
+#### Error Handling
+If ANY phase fails:
+1. Document the failure in execution report
+2. Execute the rollback command for that phase
+3. STOP execution - do NOT proceed to next phase
+4. Report error clearly with diagnostic information
+
+### Execution Report
+
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-execution-report.md`
+
+Structure:
+```markdown
+# Execution Report: [Task Name]
+
+## Summary
+[Brief outcome summary]
+
+## Phase Results
+
+### Phase 1: [Name]
+Status: [SUCCESS/FAILED]
+Validation output: [paste output]
+Notes: [any relevant details]
+
+[Repeat for all phases]
+
+## Final Validation
+[Results of checking all success criteria from plan]
+
+## Deliverables
+[What was created/modified]
+
+## Issues Encountered
+[Any problems or deviations]
+
+## Recommendations
+[Next steps or notes for Main Claude review]
+```
+
+Begin execution now. Follow the plan exactly. Document everything in the execution report.
+EXEC_TEMPLATE_END
+
+    # Replace template variables
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
+
+    LOG_FILE="${LOGS_DIR}/${TASK_ID}-execute.log"
+
+    echo "🎬 Launching Haiku executor..."
+    echo ""
+
+    # Spawn Haiku agent
+    claude -p \
+      --model haiku \
+      --output-format stream-json \
+      --verbose \
+      --dangerously-skip-permissions \
+      < "$INSTRUCTION_FILE" \
+      > "$LOG_FILE" 2>&1 &
+
+    AGENT_PID=$!
+
+    echo "Spawned Haiku agent (PID: $AGENT_PID)"
+    echo ""
+    echo "🎨 MONITOR WITH TUI:"
+    echo "   gummy-watch $TASK_ID"
+    echo ""
+
+    # Wait for agent to complete
+    wait $AGENT_PID
+    AGENT_EXIT=$?
+
+    if [ $AGENT_EXIT -ne 0 ]; then
+        echo "❌ Executor failed with exit code: $AGENT_EXIT"
+        exit 1
+    fi
+
+    echo "✅ EXECUTION COMPLETED"
+    echo ""
+    echo "=== READY FOR MAIN CLAUDE REVIEW ==="
+    echo ""
+    echo "📁 Execution report:"
+    echo "   - ${AGENT_COMMS}/${TASK_ID}-execution-report.md"
+    echo ""
+    echo "👉 Main Claude will now review the results"
+    echo ""
+    exit 0
+
+# ============================================================================
+# TASK MODE (Single-shot execution for simple tasks)
+# ============================================================================
+elif [[ "$MODE" == "task" ]]; then
+    # Get task description
+    if [[ $# -eq 0 ]]; then
+        echo "Error: Task description required"
+        echo "Usage: gummy task <task-description>"
+        exit 1
+    fi
+
+    TASK_DESCRIPTION="$*"
+    TASK_ID="gummy-$(date +%s)"
+
+    echo "⚡ Task Mode (Fast Single-Shot)"
+    echo "Task: $TASK_DESCRIPTION"
+    echo "Task ID: $TASK_ID"
+    echo ""
+
+    # Build instruction file from embedded template
+    INSTRUCTION_FILE="/tmp/${TASK_ID}-task-instruction.txt"
+
+    cat > "$INSTRUCTION_FILE" << 'TASK_TEMPLATE_EOF'
+## Task: {{TASK_DESCRIPTION}}
+
+### Your Role
+You are a Haiku execution agent. Execute this task directly - no planning phase. This is a simple, straightforward task that Main Claude has determined doesn't need detailed planning.
+
+### Task Instructions
+{{TASK_DESCRIPTION}}
+
+### Execution Guidelines
+
+1. **Read context** - Quickly understand what needs to be done
+2. **Execute directly** - Make the changes, write the code, do the task
+3. **Validate** - Verify your work is correct
+4. **Report** - Document what you did
+
+### What to Do
+
+- Read any relevant files to understand context
+- Make the necessary changes
+- Test/validate your work
+- Create a completion report
+
+### Success Criteria
+
+The task is complete when:
+- All requested changes are made
+- Code works correctly (no syntax errors)
+- Any tests pass (if applicable)
+- You've documented what was done
+
+### Completion Report
+
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-task-report.md`
+
+Structure:
+```markdown
+# Task Completion Report: {{TASK_DESCRIPTION}}
+
+## Summary
+[What was done in 1-2 sentences]
+
+## Changes Made
+
+### Files Modified
+- path/to/file.ext (N lines changed) - [what changed]
+
+### New Files Created
+- path/to/new/file.ext - [purpose]
+
+## Validation
+[How you verified it works]
+
+## Notes
+[Any important details or follow-up needed]
+```
+
+### Important Notes
+
+- **This is a simple task** - No complex planning needed
+- **Be thorough but fast** - Don't over-engineer
+- **Validate your work** - Make sure it actually works
+- **Ask for help if needed** - If the task is more complex than expected, say so in report
+
+Begin task now. Execute directly.
+TASK_TEMPLATE_EOF
+
+    # Replace template variables
+    sed -i '' "s|{{TASK_DESCRIPTION}}|$TASK_DESCRIPTION|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
+
+    LOG_FILE="${LOGS_DIR}/${TASK_ID}-task.log"
+
+    echo "🎬 Launching Haiku task agent..."
+    echo ""
+
+    # Spawn Haiku agent
+    claude -p \
+      --model haiku \
+      --output-format stream-json \
+      --verbose \
+      --dangerously-skip-permissions \
+      < "$INSTRUCTION_FILE" \
+      > "$LOG_FILE" 2>&1 &
+
+    AGENT_PID=$!
+
+    echo "Spawned Haiku agent (PID: $AGENT_PID)"
+    echo ""
+    echo "🎨 MONITOR WITH TUI:"
+    echo "   gummy-watch $TASK_ID"
+    echo ""
+
+    # Wait for agent to complete
+    wait $AGENT_PID
+    AGENT_EXIT=$?
+
+    if [ $AGENT_EXIT -ne 0 ]; then
+        echo "❌ Task agent failed with exit code: $AGENT_EXIT"
+        exit 1
+    fi
+
+    echo "✅ TASK COMPLETED"
+    echo ""
+    echo "=== READY FOR MAIN CLAUDE REVIEW ==="
+    echo ""
+    echo "📁 Task report:"
+    echo "   - ${AGENT_COMMS}/${TASK_ID}-task-report.md"
+    echo ""
+    echo "👉 Main Claude will now review the results"
+    echo ""
+    exit 0
+
+else
+    echo "Error: Mode must be 'plan', 'execute', or 'task'"
+    echo "Usage:"
+    echo "  gummy plan <task-description>"
+    echo "  gummy execute <task-id>"
+    echo "  gummy task <task-description>"
+    exit 1
+fi
