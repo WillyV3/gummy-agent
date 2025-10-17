@@ -16,8 +16,7 @@ NC='\033[0m'
 REPO_ORG="WillyV3"
 REPO_NAME="gummy-agent"
 HOMEBREW_TAP_PATH="$HOME/homebrew-tap"
-FORMULA_SOURCE="gummy-agent.rb"
-FORMULA_DEST="$HOMEBREW_TAP_PATH/Formula/gummy-agent.rb"
+FORMULA_PATH="$HOMEBREW_TAP_PATH/Formula/gummy-agent.rb"
 
 # Function to print colored output
 print_step() {
@@ -193,16 +192,13 @@ main() {
     # Step 6: Update formula with new URL and SHA256
     print_step "Updating Homebrew formula..."
 
-    if [[ ! -f $FORMULA_SOURCE ]]; then
-        print_error "Formula source file not found: $FORMULA_SOURCE"
+    if [[ ! -f $FORMULA_PATH ]]; then
+        print_error "Formula not found: $FORMULA_PATH"
     fi
 
-    # Copy the full formula to tap (preserves all changes including ASCII art)
-    cp "$FORMULA_SOURCE" "$FORMULA_DEST"
-
-    # Update only URL and SHA256 in the tap formula
-    sed -i '' "s|url \".*\"|url \"${TARBALL_URL}\"|" "$FORMULA_DEST"
-    sed -i '' "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA_DEST"
+    # Update URL and SHA256 in the tap formula
+    sed -i '' "s|url \".*\"|url \"${TARBALL_URL}\"|" "$FORMULA_PATH"
+    sed -i '' "s|sha256 \".*\"|sha256 \"${SHA256}\"|" "$FORMULA_PATH"
 
     # Commit and push to homebrew tap
     cd "$HOMEBREW_TAP_PATH"
