@@ -12,6 +12,8 @@ Orchestrates a three-agent workflow for complex tasks:
 
 All agents run as background `claude -p` processes with real-time monitoring.
 
+**Note:** This mode uses ephemeral agents (not persistent specialists). For simple tasks with persistence, use `/gummy-task` instead.
+
 ## Usage
 
 ```bash

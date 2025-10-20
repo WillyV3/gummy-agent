@@ -23,68 +23,6 @@ LOGS_DIR="$GUMMY_HOME/logs/gummy"
 # Ensure directories exist
 mkdir -p "$AGENT_COMMS" "$LOGS_DIR"
 
-# ============================================================================
-# PERSISTENCE LAYER - Source specialist management functions
-# ============================================================================
-# Try to find .gummy in current directory first, then look up the tree
-GUMMY_LIB=""
-current_dir="$PWD"
-while [[ "$current_dir" != "/" ]]; do
-    if [[ -f "$current_dir/.gummy/lib/core.sh" ]]; then
-        GUMMY_LIB="$current_dir/.gummy/lib/core.sh"
-        break
-    fi
-    current_dir=$(dirname "$current_dir")
-done
-
-# Source core.sh if found (enables persistence)
-if [[ -n "$GUMMY_LIB" ]]; then
-    source "$GUMMY_LIB"
-    PERSISTENCE_ENABLED=true
-else
-    PERSISTENCE_ENABLED=false
-fi
-
-# Determine which specialist to use for a task
-determine_specialist() {
-    local task="$1"
-
-    # Simple keyword matching to route tasks to appropriate specialists
-    case "$task" in
-        *database*|*query*|*schema*|*migration*|*sql*)
-            echo "database-expert"
-            ;;
-        *api*|*endpoint*|*route*|*rest*|*graphql*)
-            echo "api-developer"
-            ;;
-        *test*|*spec*|*jest*|*vitest*)
-            echo "testing-specialist"
-            ;;
-        *security*|*auth*|*permission*|*vulnerability*)
-            echo "security-specialist"
-            ;;
-        *ui*|*component*|*react*|*vue*|*frontend*)
-            echo "frontend-specialist"
-            ;;
-        *)
-            echo "general-specialist"
-            ;;
-    esac
-}
-
-# Check if a specialist exists (helper for when core.sh isn't loaded)
-specialist_exists() {
-    local name="$1"
-    if type -t find_specialist &>/dev/null; then
-        # Use core.sh function if available
-        local spec_path=$(find_specialist "$name")
-        [[ -n "$spec_path" ]]
-    else
-        # Fallback: check manually
-        [[ -d ".gummy/specialists/$name" ]] || [[ -d "$HOME/.gummy/specialists/$name" ]]
-    fi
-}
-
 # Parse command
 if [[ $# -lt 1 ]]; then
     echo "Usage:"
@@ -162,17 +100,17 @@ if [[ "$MODE" == "plan" ]]; then
     echo "Task ID: $TASK_ID"
     echo ""
 
-    # Build instruction file directly (no sed - safer with newlines/special chars)
+    # Build instruction file from embedded template
     INSTRUCTION_FILE="/tmp/${TASK_ID}-plan-instruction.txt"
 
-    cat > "$INSTRUCTION_FILE" <<EOF
-## Planning Task: $TASK_DESCRIPTION
+    cat > "$INSTRUCTION_FILE" << 'PLAN_TEMPLATE_EOF'
+## Planning Task: {{TASK_DESCRIPTION}}
 
 ### Your Role
 You are a Haiku planning agent. Create a detailed, executable plan for this task. You will NOT implement - a separate Haiku agent will execute your approved plan.
 
 ### Task Scope
-$TASK_DESCRIPTION
+{{TASK_DESCRIPTION}}
 
 ### Phase 0: Discovery (DO THIS FIRST)
 
@@ -185,7 +123,7 @@ Investigate:
 
 **STOP and document findings**
 
-Create: `$AGENT_COMMS/$TASK_ID-discoveries.md`
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-discoveries.md`
 
 Include:
 - Complete analysis of what needs to be done
@@ -204,11 +142,11 @@ Break into atomic phases with:
 - Validation: How to verify success
 - Rollback: How to undo if needed
 
-Create: `$AGENT_COMMS/$TASK_ID-plan.md`
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-plan.md`
 
 Structure:
 ```markdown
-# Plan: $TASK_DESCRIPTION
+# Plan: {{TASK_DESCRIPTION}}
 
 ## Discovery Summary
 [Key findings from Phase 0]
@@ -245,7 +183,7 @@ Structure:
 
 ### Phase 2: Planning Report
 
-Create: `$AGENT_COMMS/$TASK_ID-plan-report.md`
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-plan-report.md`
 
 Include:
 - Confidence level (Low/Medium/High/Very High)
@@ -267,12 +205,17 @@ Include:
 ### Output Files
 
 You MUST create exactly 3 files:
-1. `$AGENT_COMMS/$TASK_ID-discoveries.md` - Discovery findings
-2. `$AGENT_COMMS/$TASK_ID-plan.md` - Detailed implementation plan
-3. `$AGENT_COMMS/$TASK_ID-plan-report.md` - Assessment and recommendation
+1. `{{AGENT_COMMS}}/{{TASK_ID}}-discoveries.md` - Discovery findings
+2. `{{AGENT_COMMS}}/{{TASK_ID}}-plan.md` - Detailed implementation plan
+3. `{{AGENT_COMMS}}/{{TASK_ID}}-plan-report.md` - Assessment and recommendation
 
 Begin planning now.
-EOF
+PLAN_TEMPLATE_EOF
+
+    # Replace template variables
+    sed -i '' "s|{{TASK_DESCRIPTION}}|$TASK_DESCRIPTION|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
 
     LOG_FILE="${LOGS_DIR}/${TASK_ID}-plan.log"
 
@@ -354,7 +297,7 @@ elif [[ "$MODE" == "execute" ]]; then
     # Build execution instruction from embedded template
     INSTRUCTION_FILE="/tmp/${TASK_ID}-execute-instruction.txt"
 
-    cat > "$INSTRUCTION_FILE" <<'EOF1'
+    cat > "$INSTRUCTION_FILE" << 'EXEC_TEMPLATE_START'
 ## Execution Task: Execute Approved Plan
 
 ### Your Role
@@ -367,7 +310,7 @@ This is a two-phase gummy-agent workflow:
 
 ### Approved Plan
 
-EOF1
+EXEC_TEMPLATE_START
 
     # Append the actual plan
     cat "$PLAN_FILE" >> "$INSTRUCTION_FILE"
@@ -381,7 +324,7 @@ EOF1
     fi
 
     # Append execution rules
-    cat >> "$INSTRUCTION_FILE" <<'EOF2'
+    cat >> "$INSTRUCTION_FILE" << 'EXEC_TEMPLATE_END'
 
 ### Execution Rules
 
@@ -408,7 +351,7 @@ If ANY phase fails:
 
 ### Execution Report
 
-Create: `$AGENT_COMMS/$TASK_ID-execution-report.md`
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-execution-report.md`
 
 Structure:
 ```markdown
@@ -440,7 +383,11 @@ Notes: [any relevant details]
 ```
 
 Begin execution now. Follow the plan exactly. Document everything in the execution report.
-EOF2
+EXEC_TEMPLATE_END
+
+    # Replace template variables
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
 
     LOG_FILE="${LOGS_DIR}/${TASK_ID}-execute.log"
 
@@ -503,112 +450,17 @@ elif [[ "$MODE" == "task" ]]; then
     echo "Task ID: $TASK_ID"
     echo ""
 
-    # ========================================================================
-    # PERSISTENCE MODE: Use persistent specialists if available
-    # ========================================================================
-    if [[ "$PERSISTENCE_ENABLED" == "true" ]]; then
-        echo "🧠 Persistence enabled - using specialists"
-        echo ""
-
-        # Determine which specialist should handle this
-        SPECIALIST_NAME=$(determine_specialist "$TASK_DESCRIPTION")
-        echo "📋 Routing to: $SPECIALIST_NAME"
-        echo ""
-
-        # Check if specialist exists, create if not
-        if ! specialist_exists "$SPECIALIST_NAME" 2>/dev/null; then
-            echo "Creating new specialist: $SPECIALIST_NAME"
-
-            # Read project context if available
-            PROJECT_CONTEXT=""
-            if [[ -f "CLAUDE.md" ]]; then
-                PROJECT_CONTEXT=$(head -50 CLAUDE.md)
-            elif [[ -f "README.md" ]]; then
-                PROJECT_CONTEXT=$(head -30 README.md)
-            fi
-
-            # Create specialist with project-aware prompt
-            SPECIALIST_PROMPT="You are $SPECIALIST_NAME for this project.
-
-## Your Role
-You handle tasks related to ${SPECIALIST_NAME//-/ } work in this codebase.
-
-## Project Context
-$PROJECT_CONTEXT
-
-## Guidelines
-- Follow project coding standards
-- Document your work clearly
-- Save a completion report to: $AGENT_COMMS/${TASK_ID}-task-report.md
-- Report format:
-  * Summary: What you accomplished
-  * Files modified: List of changes
-  * Validation: How you tested
-  * Notes: Important details or follow-up needed
-
-Work efficiently and thoroughly."
-
-            create_specialist "$SPECIALIST_NAME" "$SPECIALIST_PROMPT" "project"
-            echo ""
-        else
-            echo "Resuming existing specialist: $SPECIALIST_NAME"
-            specialist_info "$SPECIALIST_NAME" || true
-            echo ""
-        fi
-
-        # Build task instruction for the specialist
-        TASK_INSTRUCTION="## Task: $TASK_DESCRIPTION
-
-Execute this task directly and efficiently:
-
-$TASK_DESCRIPTION
-
-When complete, create your report at:
-$AGENT_COMMS/${TASK_ID}-task-report.md
-
-Begin work now."
-
-        echo "🎬 Launching specialist..."
-        echo ""
-
-        # Use specialist (session memory preserved)
-        resume_specialist "$SPECIALIST_NAME" "$TASK_INSTRUCTION" "haiku"
-
-        echo ""
-        echo "✅ TASK COMPLETED"
-        echo ""
-        echo "=== READY FOR MAIN CLAUDE REVIEW ==="
-        echo ""
-        echo "📁 Task report:"
-        echo "   - ${AGENT_COMMS}/${TASK_ID}-task-report.md"
-        echo ""
-        echo "👉 Specialist '$SPECIALIST_NAME' is now dormant (session preserved)"
-        echo ""
-
-        # Mark specialist as dormant
-        complete_specialist "$SPECIALIST_NAME" 2>/dev/null || true
-
-        exit 0
-    fi
-
-    # ========================================================================
-    # FALLBACK MODE: Use ephemeral agent (original behavior)
-    # ========================================================================
-    echo "⚠️  Persistence not available - using ephemeral agent"
-    echo "   (Run from project with .gummy/ to enable persistence)"
-    echo ""
-
-    # Build instruction file directly (no sed - safer with newlines/special chars)
+    # Build instruction file from embedded template
     INSTRUCTION_FILE="/tmp/${TASK_ID}-task-instruction.txt"
 
-    cat > "$INSTRUCTION_FILE" <<EOF
-## Task: $TASK_DESCRIPTION
+    cat > "$INSTRUCTION_FILE" << 'TASK_TEMPLATE_EOF'
+## Task: {{TASK_DESCRIPTION}}
 
 ### Your Role
 You are a Haiku execution agent. Execute this task directly - no planning phase. This is a simple, straightforward task that Main Claude has determined doesn't need detailed planning.
 
 ### Task Instructions
-$TASK_DESCRIPTION
+{{TASK_DESCRIPTION}}
 
 ### Execution Guidelines
 
@@ -634,11 +486,11 @@ The task is complete when:
 
 ### Completion Report
 
-Create: `$AGENT_COMMS/$TASK_ID-task-report.md`
+Create: `{{AGENT_COMMS}}/{{TASK_ID}}-task-report.md`
 
 Structure:
 ```markdown
-# Task Completion Report: $TASK_DESCRIPTION
+# Task Completion Report: {{TASK_DESCRIPTION}}
 
 ## Summary
 [What was done in 1-2 sentences]
@@ -666,7 +518,12 @@ Structure:
 - **Ask for help if needed** - If the task is more complex than expected, say so in report
 
 Begin task now. Execute directly.
-EOF
+TASK_TEMPLATE_EOF
+
+    # Replace template variables
+    sed -i '' "s|{{TASK_DESCRIPTION}}|$TASK_DESCRIPTION|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{TASK_ID}}|$TASK_ID|g" "$INSTRUCTION_FILE"
+    sed -i '' "s|{{AGENT_COMMS}}|$AGENT_COMMS|g" "$INSTRUCTION_FILE"
 
     LOG_FILE="${LOGS_DIR}/${TASK_ID}-task.log"
 

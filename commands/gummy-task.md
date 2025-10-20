@@ -6,6 +6,8 @@ description: Execute simple tasks with Haiku - no planning needed
 
 Single-shot Haiku execution for simple, straightforward tasks. No planning phase - just direct execution. Use this for remedial, tedious, or simple tasks that don't need the full plan/execute workflow.
 
+**🧠 Persistence Feature:** When run from a project with `.gummy/` directory, tasks automatically use persistent specialists that remember previous work. Specialists accumulate knowledge across tasks, avoiding repeated mistakes.
+
 ## Usage
 
 ```bash
@@ -80,9 +82,25 @@ Validation:
 ~/master-claude/bin/gummy task "[your detailed instruction]"
 ```
 
+**How Specialist Routing Works:**
+The gummy script automatically:
+1. Analyzes task description for keywords (database, api, test, ui, etc.)
+2. Routes to appropriate specialist (database-expert, api-developer, testing-specialist, etc.)
+3. Creates specialist if it doesn't exist (with project context from CLAUDE.md/README.md)
+4. Resumes existing specialist session (preserving conversation memory)
+5. Executes task with accumulated specialist knowledge
+
+**Specialist Benefits:**
+- ✅ Remembers previous work in the codebase
+- ✅ Won't repeat mistakes from earlier tasks
+- ✅ Accumulates project-specific knowledge
+- ✅ Session conversation preserved across tasks
+- ✅ Monitor specialists with `gummy-watch` TUI
+
 Tell user:
 ```
 ⚡ Executing with Haiku (fast mode)...
+🧠 Using persistent specialist (remembers previous work)
 
 Monitor in real-time: gummy-watch
 

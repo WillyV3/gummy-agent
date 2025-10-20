@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -52,20 +54,33 @@ type agentState struct {
 	finalMessage string // Complete final message when completed
 }
 
+type specialistState struct {
+	name       string
+	status     string // active, dormant, new
+	sessionID  string
+	turns      int
+	lastActive string
+	created    string
+}
+
 type model struct {
 	taskID       string
 	planner      agentState
 	executor     agentState
 	taskRunner   agentState // For task mode
+	specialists  []specialistState
 	width        int
 	height       int
 	copyFeedback string
+	spinner      spinner.Model
+	viewport     viewport.Model
+	ready        bool // viewport ready flag
 }
 
 type tickMsg time.Time
 
 func (m model) Init() tea.Cmd {
-	return tick()
+	return tea.Batch(tick(), m.spinner.Tick)
 }
 
 func tick() tea.Cmd {
@@ -75,6 +90,9 @@ func tick() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -102,10 +120,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return tickMsg(t)
 				})
 			}
+		case "up", "k":
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		case "down", "j":
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Update viewport dimensions
+		headerHeight := 6 // Title + borders
+		footerHeight := 3 // Help text
+		verticalMargins := headerHeight + footerHeight
+
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width-4, msg.Height-verticalMargins)
+			m.ready = true
+		} else {
+			m.viewport.Width = msg.Width - 4
+			m.viewport.Height = msg.Height - verticalMargins
+		}
+
 	case tickMsg:
 		// Clear copy feedback after delay
 		if m.copyFeedback != "" {
@@ -120,9 +159,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.planner = readAgentState(filepath.Join(logsDir, fmt.Sprintf("%s-plan.log", m.taskID)), filepath.Join(commsDir, fmt.Sprintf("%s-plan-report.md", m.taskID)))
 		m.executor = readAgentState(filepath.Join(logsDir, fmt.Sprintf("%s-execute.log", m.taskID)), filepath.Join(commsDir, fmt.Sprintf("%s-execution-report.md", m.taskID)))
 		m.taskRunner = readAgentState(filepath.Join(logsDir, fmt.Sprintf("%s-task.log", m.taskID)), filepath.Join(commsDir, fmt.Sprintf("%s-task-report.md", m.taskID)))
-		return m, tick()
+
+		// Update specialists state
+		m.specialists = readSpecialists()
+
+		cmds = append(cmds, tick())
 	}
-	return m, nil
+
+	// Update spinner
+	m.spinner, cmd = m.spinner.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func readAgentState(logPath, reportPath string) agentState {
@@ -242,19 +290,20 @@ func (m model) View() string {
 	}
 
 	// Show only the active agent at any time
+	spinnerView := m.spinner.View()
 	if m.taskRunner.status != "not_started" {
 		// Task mode
 		taskBorder := lipgloss.Color("208") // Orange
 		b.WriteString(lipgloss.NewStyle().Foreground(taskBorder).Bold(true).Render("═══ TASK (HAIKU) ═══") + "\n")
-		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(taskBorder).Render(renderAgent(m.taskRunner, panelWidth-4)) + "\n\n")
+		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(taskBorder).Render(renderAgent(m.taskRunner, panelWidth-4, spinnerView)) + "\n\n")
 	} else if m.executor.status == "running" || m.executor.status == "completed" || m.executor.status == "failed" {
 		// Execute mode - show only executor
 		b.WriteString(lipgloss.NewStyle().Foreground(executorBorder).Bold(true).Render("═══ EXECUTE (HAIKU) ═══") + "\n")
-		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(executorBorder).Render(renderAgent(m.executor, panelWidth-4)) + "\n\n")
+		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(executorBorder).Render(renderAgent(m.executor, panelWidth-4, spinnerView)) + "\n\n")
 	} else if m.planner.status != "not_started" {
 		// Plan mode - show only planner
 		b.WriteString(lipgloss.NewStyle().Foreground(plannerBorder).Bold(true).Render("═══ PLAN (HAIKU) ═══") + "\n")
-		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(plannerBorder).Render(renderAgent(m.planner, panelWidth-4)) + "\n\n")
+		b.WriteString(panelStyle.Width(panelWidth).BorderForeground(plannerBorder).Render(renderAgent(m.planner, panelWidth-4, spinnerView)) + "\n\n")
 	}
 
 	// Status
@@ -274,8 +323,59 @@ func (m model) View() string {
 		b.WriteString(feedbackStyle.Render(m.copyFeedback) + "\n")
 	}
 
+	// Specialists Section
+	if len(m.specialists) > 0 {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true).Render("═══ PERSISTENT SPECIALISTS ═══") + "\n")
+
+		for _, spec := range m.specialists {
+			// Status indicator
+			statusIcon := "○"
+			statusColor := lipgloss.Color("240")
+			switch spec.status {
+			case "active":
+				statusIcon = "⚡"
+				statusColor = lipgloss.Color("46")
+			case "dormant":
+				statusIcon = "💤"
+				statusColor = lipgloss.Color("99")
+			case "new":
+				statusIcon = "✨"
+				statusColor = lipgloss.Color("141")
+			}
+
+			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+			statusStyle := lipgloss.NewStyle().Foreground(statusColor)
+
+			line := fmt.Sprintf("  %s %s", statusStyle.Render(statusIcon), nameStyle.Render(spec.name))
+
+			// Add session info if available
+			if spec.sessionID != "" {
+				shortSession := spec.sessionID
+				if len(shortSession) > 8 {
+					shortSession = shortSession[:8]
+				}
+				line += fmt.Sprintf(" | Session: %s", shortSession)
+			}
+
+			// Add turns info
+			if spec.turns > 0 {
+				line += fmt.Sprintf(" | Turns: %d", spec.turns)
+			}
+
+			// Add last active time
+			if spec.lastActive != "" && spec.lastActive != "null" {
+				line += fmt.Sprintf(" | Last: %s", spec.lastActive[:10]) // Just date part
+			}
+
+			b.WriteString(line + "\n")
+		}
+
+		b.WriteString("\n")
+	}
+
 	// Help
-	helpText := "[q] Quit  [c] Copy final message  [ctrl+c] Exit"
+	helpText := "[q] Quit  [c] Copy  [↑/k] Scroll up  [↓/j] Scroll down  [ctrl+c] Exit"
 	b.WriteString(helpStyle.Width(m.width).Align(lipgloss.Center).Render(helpText))
 
 	return b.String()
@@ -320,14 +420,14 @@ func wrapText(text string, width int) string {
 	return strings.TrimRight(wrapped.String(), "\n")
 }
 
-func renderAgent(a agentState, width int) string {
+func renderAgent(a agentState, width int, spinnerView string) string {
 	var b strings.Builder
 
-	// Status
+	// Status with spinner for running state
 	status := statusWaiting
 	switch a.status {
 	case "running":
-		status = statusRunning
+		status = spinnerView + " " + lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("Running")
 	case "completed":
 		status = statusCompleted
 	case "failed":
@@ -389,6 +489,80 @@ func renderAgent(a agentState, width int) string {
 	return b.String()
 }
 
+func readSpecialists() []specialistState {
+	var specialists []specialistState
+
+	// Try to find .gummy in current directory or walk up
+	cwd, err := os.Getwd()
+	if err != nil {
+		return specialists
+	}
+
+	gummyDir := ""
+	currentDir := cwd
+	for currentDir != "/" {
+		testPath := filepath.Join(currentDir, ".gummy", "specialists")
+		if info, err := os.Stat(testPath); err == nil && info.IsDir() {
+			gummyDir = testPath
+			break
+		}
+		currentDir = filepath.Dir(currentDir)
+	}
+
+	if gummyDir == "" {
+		return specialists
+	}
+
+	// Read all specialist directories
+	entries, err := os.ReadDir(gummyDir)
+	if err != nil {
+		return specialists
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		metaPath := filepath.Join(gummyDir, entry.Name(), "meta.yaml")
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+
+		// Simple YAML parsing (key: value format)
+		spec := specialistState{name: entry.Name()}
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			switch key {
+			case "status":
+				spec.status = value
+			case "session_id":
+				if value != "null" {
+					spec.sessionID = value
+				}
+			case "turns":
+				fmt.Sscanf(value, "%d", &spec.turns)
+			case "last_active":
+				spec.lastActive = value
+			case "created":
+				spec.created = value
+			}
+		}
+
+		specialists = append(specialists, spec)
+	}
+
+	return specialists
+}
+
 func main() {
 	taskID := ""
 	if len(os.Args) > 1 {
@@ -410,7 +584,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(model{taskID: taskID})
+	// Initialize spinner with MiniDot style
+	s := spinner.New()
+	s.Spinner = spinner.MiniDot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	p := tea.NewProgram(model{
+		taskID:  taskID,
+		spinner: s,
+	})
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
